@@ -1,0 +1,392 @@
+---
+title: "Taylor Swift"
+author: "By Rachel"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    smooth_scroll: true
+    number_sections: true
+---
+
+# Introduction
+58 Grammy Nominations and 14 Wins. That is the amount of awards Taylor Swift has racked up throughout the years. Being one of the most influential and successful artists of the 21st century, Taylor Swift has written chart-topping songs across multiple genres including country, pop, and indie-folk. 
+
+In our project, let's investigate the main question:
+How has Taylor Swift's evolving musical style (in terms of danceability, energy, and valence) correlates with shifts in the themes she explores in her albums?
+
+```{r setup, include = FALSE}
+#install libraries
+library(readxl)
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(stringr)
+
+#silence warnings when knitted
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, include = TRUE,
+                      fig.align = "center",  out.width = "80%", echo = FALSE, results = TRUE)
+```
+
+# Data Description
+The data is retrieved from the TidyTuesday project, created by W. Jake Thompson. This taylor dataset is a curated datasets of Taylor Swift songs, from the API of both Spotify, an audio streaming platform and Genius, a digital media company. In this data package, there are 3 different data sets, namely `taylor_album_songs`, `taylor_all_songs` and `taylor_albums`. For this project, I have chosen to focus on the `taylor_all_songs` dataset, which contains 356 songs across 29 variables, offering a rich view of Taylor’s musical output.
+
+
+```{r}
+## Introduction of dataset
+library(taylor)
+library(dplyr)
+
+data(taylor_all_songs)
+```
+
+# Data Cleaning and Modification
+In order to streamline the analysis, I selected seven relevant key columns for the report: album_name, track_name, track_release, danceability, valence, energy, and lyrics. To ensure consistency and remove any potential bias, any tracks labeled as "Taylor’s Version" are also excluded since not all albums were re-released under this new title. Her holiday album is also filtered out since they're often traditional Christmas songs. The danceability, energy, and valence of these songs are likely not representative of the overall evolution of her original style.
+
+A quick glimpse of the first 6 data give us the following: 
+```{r}
+#Selecting the relevant columns
+taylor_songs_clean <- taylor_all_songs %>%
+  select(album_name, track_name, track_release, danceability, valence, energy, lyrics) %>%
+  na.omit()
+
+#Filtering out songs from Taylor's Version albums (i.e. re-recorded albums) and the Christmas album
+taylor_songs_clean <- taylor_songs_clean %>%
+  filter(!str_detect(album_name, "Taylor's Version")) %>%
+  filter(!str_detect(album_name, "Holiday"))
+
+head(taylor_songs_clean)
+```
+
+A table of the brief description for the 7 relevant columns after cleaning, is as shown below: 
+
+```{r}
+df <- data.frame(
+  Variable = c("album_name", "track_name", "track_release", "danceability", "valence", "energy", "lyrics"),
+  Class = c("chr", "chr", "date", "dbl", "dbl", "dbl", "list"),
+  Description = c("Album name", "Track name", "Date of track release", "Spotify danceability score. A value of 0.0 is least danceable and 1.0 is most danceable (after scaling).", "Spotify valence score. A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).", "Spotify energy score. Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity.", "Lyrics in the songs in nested tibbles")
+)
+
+library(knitr)
+kable(df, caption = "Table 1: Brief Description of the 7 variables")
+```
+
+As there will be further analysis on the underlying themes present for each song, each track has to be categorized according to its dominant thematic focus. For this project, 4 popular themes commonly found in music have been identified: 
+1. *Self-Discovery and Growth*
+2. *Heartbreak and Loss*
+3. *Love and Romance*
+4. *Friendship*. 
+
+To assign each song to one of these themes, a set of keywords associated with each category was manually curated. For example, terms like "change" and "reflection" were linked to Self-Discovery and Growth, while words like "cry" and "goodbye" were associated with Heartbreak and Loss. 
+
+This thematic classification allows for further investigation of the lyrical content of Taylor Swift’s music and uncover patterns related to her emotions and personal experiences throughout her career.
+
+A quick summary of the number of categorised songs based on the theme is illustrated below: 
+```{r, results = "hide"}
+### ASSIGNING EACH SONG TO THEIR MOST DOMINANT THEME
+
+# Words relating to different themes
+love_words <- c("fall in love", "crazy in love", "heart", "kiss", "dream", "forever", "soulmate", "date", "flowers", "embrace", "adore", "baby", "babe", "hold", "affection", "romance",
+"together", "darling", "happy", "care","love of my life","be mine", "hold me close")
+heartbreak_words <- c("break", "cry","goodbye", "shattered", "pain", "gone", "regret","enemies", "miss", "ex", "heart", "reputation", "snake",
+"revenge", "fight","karma","look what you made me do", "fool","drama","blame","crazy","lose my mind", "insane", "save me","stabbed")
+self_discovery_words <- c("change", "grow","learn", "free", "journey", "stronger", "rediscover", "reflection", "light", "evolve", "queen", "independent",
+ "strength", "brave", "courage", "better","on my own","breaking free","new beginnings","figure it out","clean")
+friendship_words <- c("friend","best friends forever", "care", "fifteen", "twenty-two" ,"friendship","dancing", "welcome","laugh","next to you","I’ve got your back", "never alone",
+"there for you","understand")
+
+# Function to count matching words in the lyrics
+count_matching_words <- function(lyrics, words_list) {
+  matches = str_count(tolower(lyrics), paste(words_list, collapse = "|"))
+  return(matches)
+}
+
+# Function to assign a theme based on the lyrics
+assign_theme <- function(lyrics) {
+  love_count <- count_matching_words(lyrics, love_words)
+  heartbreak_count <- count_matching_words(lyrics, heartbreak_words)
+  self_discovery_count <- count_matching_words(lyrics, self_discovery_words)
+  friendship_count <- count_matching_words(lyrics, friendship_words)
+
+  # Find the theme with the highest count and return theme
+  counts <- c(
+    "Love and Romance" = love_count,
+    "Heartbreak and Loss" = heartbreak_count,
+    "Self-Discovery and Growth" = self_discovery_count,
+    "Friendship" = friendship_count
+  )
+
+  theme <- names(counts)[which.max(counts)]
+  return (theme)
+}
+
+# Function to combine all the lyrics (if lyrics are in a data frame)
+combine_lyrics <- function(song_lyrics) {
+  paste(song_lyrics, collapse = " ")  # Combine lyrics into a single string since lyrics are a list
+}
+
+# Apply the theme categorization after combining the lyrics
+taylor_songs_clean$lyrical_theme <- sapply(taylor_songs_clean$lyrics, function(song_lyrics) {
+  song_lyrics_combined <- combine_lyrics(song_lyrics)  # Combine lyrics into a single string
+  assign_theme(song_lyrics_combined)  # Assign a theme based on the combined lyrics
+})
+
+song_theme = taylor_songs_clean %>% group_by(lyrical_theme) %>%
+  summarise(song_count = n()) %>% 
+  arrange((song_count)) %>% rename("Themes" = "lyrical_theme", "Number of songs" = "song_count") 
+```
+
+```{r}
+kable(song_theme, caption = "Table 2: Number of Songs by each Lyrical Theme")
+```
+
+As seen in the table above, Taylor Swift has focused writing many of her songs on HeartBreak and Loss as well as Love and Romance. Such examples include "All Too Well" and "You Belong with Me".
+
+However, limitations when using such keyword-based approach are acknowledged and hence understand that the categorization may not be the most accurate. This stems from various reasons such as missing out several keywords that could help better define some themes and the ambiguity of certain words which could potentially be in two themes such as "heart". Furthermore, songwriters such as Taylor Swift love to use figurative languages in her songs and thus the meaning behind certain songs may not be as literal as it may seem. Hence, to further improve on the accuracy, the keyword list is regularly updated.
+
+After preliminary cleaning and modification, I end up with `taylor_songs_clean` dataset which also has 7 variables as before, with only the exception that the lyrics variable has been replaced by lyrical_theme. The first 6 data of `taylor_songs_clean` can be seen below: 
+
+```{r, results = "hide"}
+# Remove the lyrics column and change the class of lyrical theme
+taylor_songs_clean = taylor_songs_clean %>% select(-lyrics) %>% mutate(lyrical_theme = as.factor(lyrical_theme))
+
+#Check for duplicated rows
+taylor_songs_clean %>% filter(duplicated(.)) 
+```
+
+```{r}
+head(taylor_songs_clean)
+```
+
+```{r}
+library(ggplot2)
+
+#Package for fonts
+library(extrafont)
+loadfonts()
+loadfonts(device = "pdf")
+```
+
+# Visualizations
+
+## How have the thematic focuses in Taylor Swift's albums evolved over time?
+
+### Introduction
+Many people claim that Taylor Swift **only** writes breakup songs or songs about her exes. However, is this really the case? Can we use data to debunk this and is she gradually moving away from this theme in her more recent work? Let's find out more.
+
+### Methodology
+For this analysis where I aimed to explore the distribution of theme across Taylor Swift's albums, I have decided to first further clean our `taylor_songs_clean` dataset by arranging the albums in chronological order based on release data to maintain a proper timeline, and plot a circular bar plot. The proportions of songs for each album can be seen in the bar plot, which visually represents the distribution of different lyrical themes across Taylor Swift’s discography.
+
+### Plot
+```{r}
+#plot 1 - Ratio of themes in each Taylor Swift album
+
+#pre-process data for plot 1
+album_order <- taylor_songs_clean %>%
+  distinct(album_name, track_release) %>%
+  arrange(track_release) %>%
+  distinct(album_name) %>%
+  pull(album_name)
+
+plot1 = taylor_songs_clean %>% group_by(album_name) %>%
+  count(lyrical_theme) %>%
+    mutate(album_name=factor(album_name, levels = album_order)) %>%
+      mutate(ratio = n / sum(n))
+
+#colour palette for bar graphs
+color_palette <- c(
+  "Love and Romance" = "#F7B0CC", # pink
+  "Heartbreak and Loss" = "#7A2E39",  # red
+  "Self-Discovery and Growth" = "#EFC180",  #orange
+  "Friendship" = "#BFEFF8"  #blue
+)
+
+library(scales)
+#plotting plot1
+ggplot(plot1, aes(x=album_name, y=ratio, fill=lyrical_theme)) +
+  geom_bar(stat = "identity", position = "fill", width=0.8, color="black") +
+  labs(title="Circular barplot showing ratio of song themes in each album", x="Albums", y= "Ratio of songs", fill="Themes", caption="TTPD : The Tortured Poets Department") +
+  coord_polar(start=1) +
+  ylim(0,1) +
+  theme_minimal() +
+  geom_segment(aes(x = album_name, xend = album_name, y = 1, yend = 1.2),color = "black", size = 0.8) +
+  theme(
+    plot.title = element_text(size = 16, family = "Times New Roman", face = "bold", hjust=0.5),
+    axis.text.x = element_text(angle = 0, family="Times New Roman", size=6, face ="bold"), 
+    axis.title.x = element_text(family="Times New Roman", size= 12, face ="bold"),
+    axis.text.y = element_text(size = 11, family = "Times New Roman" , hjust = 1),
+    axis.title.y = element_text(family="Times New Roman", size= 12, face ="bold"),
+    legend.position = "bottom",
+    legend.title = element_text(family="Times New Roman", size =11, face="bold"),
+    legend.text =element_text(family="Times New Roman"),
+    plot.margin = unit(c(0.3, 0.3, 0.3, 0.3), "cm"),
+    plot.caption = element_text(family ="Times New Roman", hjust = 1.9)
+    ) +
+      scale_fill_manual(values = alpha(color_palette, alpha = 0.4)) +
+      scale_x_discrete(labels = c("Taylor \nSwift", "Fearless", "Speak \nNow","Red", "1989", "Reputation", "Lover", "Folklore", "Evermore", "Midnights", "TTPD"))
+
+```
+
+### Discussion
+The circular bar plot reveals that almost all of Taylor Swift's album features a blend of the four key themes I have explored. Hence, it is definitely not true that Taylor Swift *only* writes about her exes. Yet, it is understandably why most people have this impression since the two predominant themes she writes in most of her albums are about Heartbreak and Loss as well as Love and Romance. This further aligns with the large number of songs in her discography centered around these emotional themes as shown in *Table 2* above. Notably, Speak Now, Red, Midnights, and TTPD contain the highest proportion of songs related to Heartbreak and Loss, which is consistent with the fact that these albums are widely recognized as her "break-up" albums, with well-known breakup songs such as "Dear John" and "Midnight Rain". 
+
+As Taylor is currently in a relationship, I could hypothesize that her future albums may shift towards a more uplifting, "happy lover" theme, possibly incorporating themes of self-discovery and growth. However, only time and data will tell how her songwriting evolves with her personal experiences. 
+
+## How do musical qualities such as danceability, energy, and valence correspond to the lyrical themes in Taylor Swift’s songs
+
+### Introduction
+Now that we have seen how lyrical themes have evolved in Taylor Swift's discography, we can look at how musical characteristics vary across the 4 different themes that we have explored. 
+
+### Methodology
+For this question, I chose a box plot layered on top of scatter plots for the different themes. With the help of box plots, it helps us to highlight the two different quartiles as well as the median, for easier comparison. However, it is important to note that the datasets for themes like Friendship and Self-Discovery and Growth are relatively smaller, which may limit the accuracy of our measurements for these themes in terms of Taylor Swift’s songwriting.
+
+### Plot
+```{r}
+#pre-process data for plot 2
+
+plot2 = taylor_songs_clean %>%
+  mutate(lyrical_theme= factor(lyrical_theme,levels = unique(lyrical_theme))) %>%
+    arrange(lyrical_theme)%>%
+    pivot_longer(cols = c(danceability, valence, energy),
+               names_to = "characteristic",
+               values_to = "value") %>% 
+  mutate(characteristic = as.factor(characteristic))
+
+# finding median values 
+median_values <- plot2 %>%
+  group_by(lyrical_theme, characteristic) %>%
+  summarize(median_value = median(value))
+
+#colour palette
+colors = c(danceability = "slateblue2", valence = "mediumorchid2", energy = "grey47")
+
+#plotting plot 2
+ggplot(plot2, aes(x=lyrical_theme, y=value, fill=characteristic, color=characteristic)) +
+    geom_jitter(position = position_jitter(0.2), alpha = 1) +
+      geom_boxplot(alpha=0.4, width=0.9, color="black", size = 0.5) +
+    theme_minimal()+
+    labs(
+    title = "Boxplot of Danceability, Valence, and Energy Across\n Lyrical Themes",
+    x = "Lyrical Themes",
+    y = "Value",
+    fill = "Musical Features",
+    color="Musical Features",
+    caption = "Remark: Each point represents the value of musical features in each song") +
+    theme(
+    legend.position = "bottom",  
+    plot.title = element_text(size = 16, family = "Times New Roman", face = "bold", hjust =0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1, family ="Times New Roman", size = 12, face="bold"),
+    axis.title.x =element_text(family ="Times New Roman", size = 13, face="bold"),
+    axis.text.y = element_text(family ="Times New Roman", size = 12),
+    axis.title.y = element_text(family ="Times New Roman", size = 12, face="bold"),
+    legend.title = element_text(family ="Times New Roman", face="bold"),
+    legend.text= element_text(family ="Times New Roman"),
+    plot.caption = element_text(family="Times New Roman")) +
+      scale_fill_manual(values = colors, labels = c("Danceability", "Valence", "Energy")) +
+      scale_color_manual(values= colors, labels = c("Danceability", "Valence", "Energy")) +
+      guides(
+    fill = guide_legend(title = "Musical Features"),  
+    color = guide_legend(title = "Musical Features")) +
+       scale_x_discrete(labels = c("Self Discovery\n and Growth" , "Heartbreak \n and Loss","Love and\n Romance", "Friendship")) +
+  geom_label(data = median_values, aes(x = lyrical_theme, y = median_value , label = round(median_value, 2), group = characteristic),
+            position = position_dodge(width = 0.9), size = 3, family = "Arial", fill ="white", color="red", fontface = "bold")
+```
+
+### Discussion 
+From the plot, it can be seen that danceability, energy and valence generally follow similar patterns across all themes. 
+
+Notably, danceability is most pronounced in songs with positive themes, such as Friendship, which boasts the highest danceability score of 0.63. This aligns with the idea that these themes are often associated with uplifting, feel-good vibes. This suggests that songs focused on positive emotions are typically crafted to encourage movement and evoke a joyful atmosphere. 
+
+On the other hand, the relationship between valence value and theme yields an interesting result. Despite Heartbreak and Loss being traditionally linked with negative emotions, this theme actually registers the highest valence value of 0.57. This could reflect Taylor Swift’s ability to blend melancholy with an upbeat sound, tapping into the trend of crafting more energetic, catchy music even while addressing sad or introspective topics. A prime example of this is the song "I Can Do It With a Broken Heart," which combines a relatively upbeat melody with lyrics that convey sadness, illustrating how Taylor Swift masterfully balances emotional depth with accessible, danceable music.
+
+When it comes to energy, Love and Romance stands out with the highest value of 0.38. This makes sense, given that songs in this theme often carry an intense, vibrant energy that mirrors the passionate and lively nature of romantic relationships. 
+
+## How do the musical features such as danceability, energy and valence change across albums?
+
+### Introduction
+After learning how the lyrical theme evolve across the albums and how the musical features vary for each theme, let's combine and take a look at how musical characteristics have therefore evolved across her discography.
+
+### Methodology
+I created a line plot displaying the changes in each musical feature (danceability, energy, valence) across albums. Each feature was assigned a distinct colour, and a dashed line was added to indicate the overall mean value for each characteristic. The plot was also faceted by characteristic to clearly show the evolution of each characteristic separately.
+The overall mean value for each characteristic across all albums was calculated for comparison, and the albums were ordered according to their release sequence. 
+
+### Plot
+```{r, results = "hide"}
+# plot 3
+
+#pre-processing for plot3
+
+plot3 <- taylor_songs_clean %>%
+  group_by(album_name) %>%
+  summarise(across(c(danceability, valence, energy), mean, na.rm = TRUE)) %>%
+  pivot_longer(cols = c(danceability, valence, energy),
+               names_to = "characteristic",
+               values_to = "value") %>%
+  mutate(album_name = factor(album_name, album_order), characteristic = str_to_title(characteristic))
+
+mean_values <- plot3 %>%
+  group_by(characteristic) %>%
+  summarise(mean_value = mean(value, na.rm = TRUE))
+```
+
+```{r}
+colors = c(Danceability = "slateblue2", Valence = "mediumorchid2", Energy = "grey47")
+
+# Line plot with all three variables on y-axis and album_name on x-axis
+ggplot(plot3, aes(x = album_name, y = value, color = characteristic, group = characteristic)) +
+  geom_point(size = 2) +
+  geom_line(aes(linetype = "dotdash"), size = 0.5, show.legend = FALSE) +
+  labs(
+    title = "Danceability, Energy and Valence Across Albums",
+    x = "Album",
+    y = "Value",
+    color = "Musical Styles",
+    caption = "TTPD : The Tortured Poets Department"  
+  ) +
+  scale_color_manual(values = colors, labels = c("Danceability", "Valence", "Energy")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(family = "Times New Roman", size = 16, face = "bold",hjust = 0.5),  # Title style
+    axis.text.x = element_text(angle = 45, hjust = 1, family = "Times New Roman", size = 12),  # X axis labels
+    axis.title.x = element_text(family = "Times New Roman", size = 13, face = "bold"),  # X axis title
+    axis.text.y = element_text(family = "Times New Roman", size = 12),  # Y axis labels
+    axis.title.y = element_text(family = "Times New Roman", size = 12, face = "bold"),  # Y axis title
+    legend.position = "none",  # Remove the legend
+    plot.caption = element_text(family = "Times New Roman", hjust = 1, size = 10)  # Caption style
+  ) +
+  scale_x_discrete(labels = append(album_order[-length(album_order)], "TTPD")) +
+  facet_wrap(~ characteristic, scales = "free_y", ncol = 1) + 
+  expand_limits(y = c(0.2, 0.8)) +
+  geom_hline(data = mean_values, aes(yintercept = mean_value), linetype = "dashed", size = 1, color = "red", alpha =0.4) +
+  geom_text(data = mean_values, aes(x = 12, y = mean_value, label = paste("Mean:", round(mean_value, 2))),
+            color = "black", size = 4, vjust = -1, hjust = 1.1, family = "Times New Roman")
+```
+
+### Discussion
+The line graphs illustrate the trends in danceability, energy, and valence across Taylor Swift’s discography. Overall, a relatively stable trend for danceability across her albums is observed, with minor fluctuations. The average danceability score of 0.59 indicates that most of her songs have a moderate rhythm, making them easy to move to. Notably, albums like Reputation and Lover show slight peaks in danceability, aligning with their pop-oriented and upbeat production style.
+
+Energy scores, on the other hand, show more variation across the albums. Earlier albums like Taylor Swift, Speak Now and 1989 exhibit higher energy, reflecting the country and pop influences in her music during this period. However, there is a notable dip in energy levels in folklore and evermore, which aligns with the subdued, indie-folk style she explored during these projects. This shift highlights Taylor Swift’s experimentation with softer, more introspective musical tones during these albums, deviating from the energetic pop sound of her previous work.
+
+Valence, representing the musical positiveness or emotional tone, demonstrates the most variability among the three characteristics. The overall mean valence score is relatively low at 0.39, suggesting a tendency towards melancholic or emotionally complex themes in her music, such as heartbreak and loss. This aligns with her frequent exploration of themes such as heartbreak and loss. For instance, albums like reputation and Midnights exhibit lower valence, as these two albums capture the emotional aftermath of Taylor's public feud with Kanye West and the complexities surrounding the end of her six-year relationship, infusing her music with a sense of betrayal and introspection.
+
+In summary, the analysis of danceability, energy, and valence across Taylor Swift’s albums reveals her dynamic approach to songwriting and production. While her overall danceability remains steady, the variations in energy and valence reflect her evolution as an artist, experimenting with different genres and emotional themes based on her life experiences.
+
+# Conclusion
+This project examined the evolution of Taylor Swift's musical style and its correlation with the lyrical themes in her songs, focusing on danceability, energy, and valence. While Taylor is often associated with themes of heartbreak and romance, our analysis revealed that her music spans a wide range of emotional experiences, including self-discovery and friendship. I found that musical characteristics like danceability and valence align with these themes, with upbeat songs reflecting positive emotions like friendship and self-growth, while heartbreak songs often feature higher valence despite their melancholic tone. Over time, her music has evolved, with albums like folklore and evermore embracing a softer, introspective style, while pop-driven albums like 1989 and Reputation display higher energy. Overall, the findings highlight Taylor Swift’s versatility and her ability to blend emotional depth with diverse musical styles, debunking the myth that she only writes breakup songs and showcasing her dynamic growth as an artist.
+
+# References
+**Data Source** <br>
+https://github.com/rfordatascience/tidytuesday/blob/master/data/2023/2023-10-17/readme.md
+
+**Other sources** <br>
+1. Hex code for colour of albums: 
+https://www.pinterest.com/pin/taylor-swift-eras-color-hex-codes--2744449767106043/
+<br>
+2. Holtz, Y. (n.d.). Area Chart | The R Graph Gallery. https://r-graph-gallery.com/circular-barplot.html
+<br>
+3. What are we listening to? The Most Popular Themes in Songs
+https://aimm.edu/blog/most-popular-themes-in-songs
+<br>
+4. Taylor Swift’s Albums Are the Stages of a Breakup, and “Reputation” Is Stage Anger
+https://medium.com/listen-whatever/taylor-swifts-albums-are-the-stages-of-a-breakup-and-reputation-is-stage-anger-8ae3e8d3f7fd
