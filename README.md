@@ -117,10 +117,14 @@ taylor_albums <- readr::read_csv('https://raw.githubusercontent.com/rfordatascie
 
 ## The Report
 
-For our report, I have used the software R to create an R Markdown file. Some packages I have used include `readxl`, `readr`, `tidyverse`, `lubridate`, `stringr`, and `dplyr`. Do download these packages if they are not already installed on your laptop by running the following command in your R console:
+For the report, I have used the software R to create an R Markdown file. Some packages I have used include `readxl`, `readr`, `tidyverse`, `lubridate`, `stringr`, and `dplyr`. Do download these packages if they are not already installed on your laptop by running the following command in your R console:
 
 ```R
 install.packages(c("readxl", "readr", "tidyverse", "lubridate", "stringr", "dplyr"))
 ```
 
-These packages are essential for data import, manipulation, and analysis throughout the report. The `tidyverse` package, in particular, provides a comprehensive suite of tools for data wrangling, visualization, and statistical analysis. The `lubridate` package helps with handling date-time data, while `readxl` and `readr` are used for reading data files, such as Excel and CSV formats, respectively. The `stringr` and `dplyr` packages simplify string operations and data transformations. Once these packages are installed, you should be able to run the R Markdown file without any issues.
+These packages are essential for data import, manipulation, and analysis throughout the report. The `tidyverse` package, in particular, provides a comprehensive suite of tools for data wrangling, visualization, and statistical analysis. The `lubridate` package helps with handling date-time data, while `readxl` and `readr` are used for reading data files, such as Excel and CSV formats, respectively. The `stringr` and `dplyr` packages simplify string operations and data transformations. Once these packages are installed, you should be able to run the [Taylor_Swift.Rmd](https://github.com/racxxhel/Taylor-Swift-/blob/main/Taylor_Swift.Rmd) without any issues. You may use the R markdown code and further improve on this project!
+
+For easier viewing, you may also download the raw file from the [Taylor_Swift.html](https://github.com/racxxhel/Taylor-Swift-/blob/main/Taylor_Swift.html) and view the html file online. 
+
+Hope you like the project, thank you! ♡
