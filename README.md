@@ -2,8 +2,6 @@
 
 Since [The Eras Tour](https://www.tstheerastourfilm.com/) has just ended sadly, let's now explore why Taylor Swift is so popular! Is it because of her song-writing skills, or is it because of her ability to constantly evolve, connect with fans on a personal level, and create cultural moments that transcend music?
 
-Are you Ready for It? 
-
 The [taylor](https://taylor.wjakethompson.com/) R package from W. Jake Thompson is a curated data set of Taylor Swift songs, including lyrics and audio characteristics. 
 The data comes from Genius and the Spotify API.
 
